@@ -193,6 +193,17 @@ export function isBoardComplete(grid: Grid): boolean {
   return grid.every((v) => v !== 0);
 }
 
+// counts[d] = how many times digit d currently appears on the board.
+// A finished digit (all 9 placed) has no legal cell left, so the UI uses
+// this to grey out that digit's key on the number pad.
+export function countDigits(grid: Grid): number[] {
+  const counts = new Array(10).fill(0);
+  for (const val of grid) {
+    if (val !== 0) counts[val]++;
+  }
+  return counts;
+}
+
 // Returns the set of cell indices that conflict with another cell in the
 // same row, column, or 3x3 box.
 export function findConflicts(grid: Grid): Set<number> {

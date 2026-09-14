@@ -5,7 +5,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Board from './components/Board';
 import DifficultyMenu from './components/DifficultyMenu';
 import NumberPad from './components/NumberPad';
-import { Difficulty, Grid, findConflicts, generatePuzzle, isBoardComplete } from './lib/sudoku';
+import { Difficulty, Grid, countDigits, findConflicts, generatePuzzle, isBoardComplete } from './lib/sudoku';
 
 type Phase = 'menu' | 'playing';
 
@@ -40,6 +40,15 @@ export default function App() {
 
   const conflicts = useMemo(() => (game ? findConflicts(game.board) : new Set<number>()), [game]);
   const complete = useMemo(() => (game ? isBoardComplete(game.board) : false), [game]);
+  const completedDigits = useMemo(() => {
+    if (!game) return new Set<number>();
+    const counts = countDigits(game.board);
+    const done = new Set<number>();
+    for (let d = 1; d <= 9; d++) {
+      if (counts[d] >= 9) done.add(d);
+    }
+    return done;
+  }, [game]);
 
   useEffect(() => {
     if (complete && conflicts.size === 0) {
@@ -154,6 +163,7 @@ export default function App() {
               onNumberPress={handleNumberPress}
               onErase={handleErase}
               disabled={won || paused || clueSelected}
+              completedDigits={completedDigits}
             />
           </>
         )}
