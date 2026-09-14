@@ -1,11 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Board from './components/Board';
 import DifficultyMenu from './components/DifficultyMenu';
 import NumberPad from './components/NumberPad';
 import { Difficulty, Grid, countDigits, findConflicts, generatePuzzle, isBoardComplete } from './lib/sudoku';
+import { clearSavedGame, loadGame, saveGame } from './lib/storage';
 
 type Phase = 'menu' | 'playing';
 
@@ -27,6 +28,7 @@ function newGame(difficulty: Difficulty) {
 }
 
 export default function App() {
+  const [hydrated, setHydrated] = useState(false);
   const [phase, setPhase] = useState<Phase>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
   const [game, setGame] = useState<ReturnType<typeof newGame> | null>(null);
@@ -50,9 +52,15 @@ export default function App() {
     return done;
   }, [game]);
 
+  const activeGame = useMemo(() => {
+    if (!game || won) return null;
+    return { label: difficulty[0].toUpperCase() + difficulty.slice(1), timeLabel: formatTime(seconds) };
+  }, [game, won, difficulty, seconds]);
+
   useEffect(() => {
     if (complete && conflicts.size === 0) {
       setWon(true);
+      clearSavedGame();
     }
   }, [complete, conflicts]);
 
@@ -61,6 +69,39 @@ export default function App() {
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
   }, [phase, won, paused]);
+
+  // Resume whatever was in progress last time the app was open. It comes
+  // back paused - same screen as a manual pause - so nothing is visible
+  // until the player chooses to continue.
+  useEffect(() => {
+    (async () => {
+      const saved = await loadGame();
+      if (saved) {
+        setDifficulty(saved.difficulty);
+        setGame({ board: saved.board, solution: saved.solution, initial: saved.initial });
+        setSelectedIndex(saved.selectedIndex);
+        setSeconds(saved.seconds);
+        setPaused(true);
+        setPhase('playing');
+      }
+      setHydrated(true);
+    })();
+  }, []);
+
+  // Persist on every meaningful change once a game is in progress. Skipped
+  // until hydration finishes so the just-loaded save isn't immediately
+  // overwritten with the empty initial state.
+  useEffect(() => {
+    if (!hydrated || phase !== 'playing' || !game || won) return;
+    saveGame({
+      difficulty,
+      board: game.board,
+      solution: game.solution,
+      initial: game.initial,
+      selectedIndex,
+      seconds,
+    });
+  }, [hydrated, phase, game, difficulty, selectedIndex, seconds, won]);
 
   const selectDifficulty = useCallback((d: Difficulty) => {
     setDifficulty(d);
@@ -72,9 +113,17 @@ export default function App() {
     setPhase('playing');
   }, []);
 
+  // Stepping out to the menu is non-destructive: the in-progress game (and
+  // its save) stays put, just paused, so DifficultyMenu can offer it back
+  // via the Continue card instead of forcing a fresh puzzle.
   const goToMenu = useCallback(() => {
+    setPaused(true);
     setPhase('menu');
+  }, []);
+
+  const resumeFromMenu = useCallback(() => {
     setPaused(false);
+    setPhase('playing');
   }, []);
 
   const handleSelect = useCallback(
@@ -120,8 +169,15 @@ export default function App() {
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <Text style={styles.title}>Sudoku</Text>
 
-        {phase === 'menu' || !game ? (
-          <DifficultyMenu width={contentWidth} onSelect={selectDifficulty} />
+        {!hydrated ? (
+          <ActivityIndicator style={styles.loadingIndicator} color="#1a1a2e" />
+        ) : phase === 'menu' || !game ? (
+          <DifficultyMenu
+            width={contentWidth}
+            onSelect={selectDifficulty}
+            activeGame={activeGame}
+            onContinue={resumeFromMenu}
+          />
         ) : (
           <>
             <View style={[styles.statusRow, { width: contentWidth }]}>
@@ -203,6 +259,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1a1a2e',
     marginBottom: 8,
+  },
+  loadingIndicator: {
+    marginTop: 60,
   },
   statusRow: {
     flexDirection: 'row',
