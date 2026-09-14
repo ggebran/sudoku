@@ -70,17 +70,19 @@ export default function App() {
 
   const handleSelect = useCallback(
     (idx: number) => {
-      if (!game || game.initial[idx] || paused) return;
+      if (!game || paused) return;
       setSelectedIndex(idx);
     },
     [game, paused]
   );
 
+  const clueSelected = !!game && selectedIndex !== null && game.initial[selectedIndex];
+
   const handleNumberPress = useCallback(
     (n: number) => {
       if (selectedIndex === null || won || paused) return;
       setGame((g) => {
-        if (!g) return g;
+        if (!g || g.initial[selectedIndex]) return g;
         const board: Grid = g.board.slice();
         board[selectedIndex] = n;
         return { ...g, board };
@@ -92,7 +94,7 @@ export default function App() {
   const handleErase = useCallback(() => {
     if (selectedIndex === null || won || paused) return;
     setGame((g) => {
-      if (!g) return g;
+      if (!g || g.initial[selectedIndex]) return g;
       const board: Grid = g.board.slice();
       board[selectedIndex] = 0;
       return { ...g, board };
@@ -148,7 +150,11 @@ export default function App() {
               )}
             </View>
 
-            <NumberPad onNumberPress={handleNumberPress} onErase={handleErase} disabled={won || paused} />
+            <NumberPad
+              onNumberPress={handleNumberPress}
+              onErase={handleErase}
+              disabled={won || paused || clueSelected}
+            />
           </>
         )}
 
