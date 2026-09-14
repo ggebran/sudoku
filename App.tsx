@@ -37,6 +37,8 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [won, setWon] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width - 24, 396);
@@ -51,10 +53,10 @@ export default function App() {
   }, [complete, conflicts]);
 
   useEffect(() => {
-    if (won) return;
+    if (won || !started || paused) return;
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
-  }, [won]);
+  }, [won, started, paused]);
 
   const startNewGame = useCallback((d: Difficulty) => {
     setDifficulty(d);
@@ -62,36 +64,45 @@ export default function App() {
     setSelectedIndex(null);
     setSeconds(0);
     setWon(false);
+    setStarted(false);
+    setPaused(false);
   }, []);
 
   const handleSelect = useCallback(
     (idx: number) => {
-      if (game.initial[idx]) return;
+      if (game.initial[idx] || paused) return;
       setSelectedIndex(idx);
+      setStarted(true);
     },
-    [game.initial]
+    [game.initial, paused]
   );
 
   const handleNumberPress = useCallback(
     (n: number) => {
-      if (selectedIndex === null || won) return;
+      if (selectedIndex === null || won || paused) return;
       setGame((g) => {
         const board: Grid = g.board.slice();
         board[selectedIndex] = n;
         return { ...g, board };
       });
+      setStarted(true);
     },
-    [selectedIndex, won]
+    [selectedIndex, won, paused]
   );
 
   const handleErase = useCallback(() => {
-    if (selectedIndex === null || won) return;
+    if (selectedIndex === null || won || paused) return;
     setGame((g) => {
       const board: Grid = g.board.slice();
       board[selectedIndex] = 0;
       return { ...g, board };
     });
-  }, [selectedIndex, won]);
+  }, [selectedIndex, won, paused]);
+
+  const togglePause = useCallback(() => {
+    if (!started || won) return;
+    setPaused((p) => !p);
+  }, [started, won]);
 
   return (
     <SafeAreaProvider>
@@ -118,21 +129,38 @@ export default function App() {
       </View>
 
       <View style={[styles.statusRow, { width: contentWidth }]}>
-        <Text style={styles.timer}>{formatTime(seconds)}</Text>
+        <View style={styles.timerRow}>
+          <Text style={styles.timer}>{formatTime(seconds)}</Text>
+          <Pressable
+            onPress={togglePause}
+            disabled={!started || won}
+            style={[styles.pauseButton, (!started || won) && styles.pauseButtonDisabled]}
+          >
+            <Text style={styles.pauseText}>{paused ? '▶' : '⏸'}</Text>
+          </Pressable>
+        </View>
         <Pressable onPress={() => startNewGame(difficulty)} style={styles.newGameButton}>
           <Text style={styles.newGameText}>New Game</Text>
         </Pressable>
       </View>
 
-      <Board
-        board={game.board}
-        initial={game.initial}
-        conflicts={conflicts}
-        selectedIndex={selectedIndex}
-        onSelect={handleSelect}
-      />
+      <View>
+        <Board
+          board={game.board}
+          initial={game.initial}
+          conflicts={conflicts}
+          selectedIndex={selectedIndex}
+          onSelect={handleSelect}
+        />
+        {paused && (
+          <Pressable style={styles.pauseOverlay} onPress={togglePause}>
+            <Text style={styles.pauseOverlayText}>Paused</Text>
+            <Text style={styles.pauseOverlaySubtext}>Tap to resume</Text>
+          </Pressable>
+        )}
+      </View>
 
-      <NumberPad onNumberPress={handleNumberPress} onErase={handleErase} disabled={won} />
+      <NumberPad onNumberPress={handleNumberPress} onErase={handleErase} disabled={won || paused} />
 
       <Modal visible={won} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -195,11 +223,53 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   timer: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1a1a2e',
     fontVariant: ['tabular-nums'],
+  },
+  pauseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#e9ecef',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pauseButtonDisabled: {
+    opacity: 0.4,
+  },
+  pauseText: {
+    fontSize: 14,
+    color: '#1a1a2e',
+  },
+  pauseOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(248,249,250,0.96)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  pauseOverlayText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1a1a2e',
+    marginBottom: 6,
+  },
+  pauseOverlaySubtext: {
+    fontSize: 14,
+    color: '#495057',
   },
   newGameButton: {
     paddingHorizontal: 14,

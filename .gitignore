@@ -42,3 +42,4 @@ yarn-error.*
 
 # local dev server log
 expo.log
+expo-qr.png
