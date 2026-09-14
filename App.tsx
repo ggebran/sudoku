@@ -3,16 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Board from './components/Board';
+import DifficultyMenu from './components/DifficultyMenu';
 import NumberPad from './components/NumberPad';
-import {
-  Difficulty,
-  Grid,
-  findConflicts,
-  generatePuzzle,
-  isBoardComplete,
-} from './lib/sudoku';
+import { Difficulty, Grid, findConflicts, generatePuzzle, isBoardComplete } from './lib/sudoku';
 
-const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
+type Phase = 'menu' | 'playing';
 
 function formatTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60)
@@ -32,19 +27,19 @@ function newGame(difficulty: Difficulty) {
 }
 
 export default function App() {
+  const [phase, setPhase] = useState<Phase>('menu');
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
-  const [game, setGame] = useState(() => newGame('easy'));
+  const [game, setGame] = useState<ReturnType<typeof newGame> | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [won, setWon] = useState(false);
-  const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
 
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width - 24, 396);
 
-  const conflicts = useMemo(() => findConflicts(game.board), [game.board]);
-  const complete = useMemo(() => isBoardComplete(game.board), [game.board]);
+  const conflicts = useMemo(() => (game ? findConflicts(game.board) : new Set<number>()), [game]);
+  const complete = useMemo(() => (game ? isBoardComplete(game.board) : false), [game]);
 
   useEffect(() => {
     if (complete && conflicts.size === 0) {
@@ -53,39 +48,43 @@ export default function App() {
   }, [complete, conflicts]);
 
   useEffect(() => {
-    if (won || !started || paused) return;
+    if (phase !== 'playing' || won || paused) return;
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(timer);
-  }, [won, started, paused]);
+  }, [phase, won, paused]);
 
-  const startNewGame = useCallback((d: Difficulty) => {
+  const selectDifficulty = useCallback((d: Difficulty) => {
     setDifficulty(d);
     setGame(newGame(d));
     setSelectedIndex(null);
     setSeconds(0);
     setWon(false);
-    setStarted(false);
+    setPaused(false);
+    setPhase('playing');
+  }, []);
+
+  const goToMenu = useCallback(() => {
+    setPhase('menu');
     setPaused(false);
   }, []);
 
   const handleSelect = useCallback(
     (idx: number) => {
-      if (game.initial[idx] || paused) return;
+      if (!game || game.initial[idx] || paused) return;
       setSelectedIndex(idx);
-      setStarted(true);
     },
-    [game.initial, paused]
+    [game, paused]
   );
 
   const handleNumberPress = useCallback(
     (n: number) => {
       if (selectedIndex === null || won || paused) return;
       setGame((g) => {
+        if (!g) return g;
         const board: Grid = g.board.slice();
         board[selectedIndex] = n;
         return { ...g, board };
       });
-      setStarted(true);
     },
     [selectedIndex, won, paused]
   );
@@ -93,6 +92,7 @@ export default function App() {
   const handleErase = useCallback(() => {
     if (selectedIndex === null || won || paused) return;
     setGame((g) => {
+      if (!g) return g;
       const board: Grid = g.board.slice();
       board[selectedIndex] = 0;
       return { ...g, board };
@@ -100,83 +100,76 @@ export default function App() {
   }, [selectedIndex, won, paused]);
 
   const togglePause = useCallback(() => {
-    if (!started || won) return;
+    if (won) return;
     setPaused((p) => !p);
-  }, [started, won]);
+  }, [won]);
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <Text style={styles.title}>Sudoku</Text>
+        <Text style={styles.title}>Sudoku</Text>
 
-      <View style={styles.difficultyRow}>
-        {DIFFICULTIES.map((d) => (
-          <Pressable
-            key={d}
-            onPress={() => startNewGame(d)}
-            style={[styles.difficultyChip, difficulty === d && styles.difficultyChipActive]}
-          >
-            <Text
-              style={[
-                styles.difficultyText,
-                difficulty === d && styles.difficultyTextActive,
-              ]}
-            >
-              {d[0].toUpperCase() + d.slice(1)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+        {phase === 'menu' || !game ? (
+          <DifficultyMenu width={contentWidth} onSelect={selectDifficulty} />
+        ) : (
+          <>
+            <View style={[styles.statusRow, { width: contentWidth }]}>
+              <View style={styles.timerRow}>
+                <Text style={styles.timer}>{formatTime(seconds)}</Text>
+                <Pressable
+                  onPress={togglePause}
+                  disabled={won}
+                  style={[styles.pauseButton, won && styles.pauseButtonDisabled]}
+                >
+                  <Text style={styles.pauseText}>{paused ? '▶' : '⏸'}</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.difficultyLabel}>
+                {difficulty[0].toUpperCase() + difficulty.slice(1)}
+              </Text>
+              <Pressable onPress={goToMenu} style={styles.menuButton}>
+                <Text style={styles.menuButtonText}>Menu</Text>
+              </Pressable>
+            </View>
 
-      <View style={[styles.statusRow, { width: contentWidth }]}>
-        <View style={styles.timerRow}>
-          <Text style={styles.timer}>{formatTime(seconds)}</Text>
-          <Pressable
-            onPress={togglePause}
-            disabled={!started || won}
-            style={[styles.pauseButton, (!started || won) && styles.pauseButtonDisabled]}
-          >
-            <Text style={styles.pauseText}>{paused ? '▶' : '⏸'}</Text>
-          </Pressable>
-        </View>
-        <Pressable onPress={() => startNewGame(difficulty)} style={styles.newGameButton}>
-          <Text style={styles.newGameText}>New Game</Text>
-        </Pressable>
-      </View>
+            <View>
+              <Board
+                board={game.board}
+                initial={game.initial}
+                conflicts={conflicts}
+                selectedIndex={selectedIndex}
+                onSelect={handleSelect}
+              />
+              {paused && (
+                <Pressable style={styles.pauseOverlay} onPress={togglePause}>
+                  <Text style={styles.pauseOverlayText}>Paused</Text>
+                  <Text style={styles.pauseOverlaySubtext}>Tap to resume</Text>
+                </Pressable>
+              )}
+            </View>
 
-      <View>
-        <Board
-          board={game.board}
-          initial={game.initial}
-          conflicts={conflicts}
-          selectedIndex={selectedIndex}
-          onSelect={handleSelect}
-        />
-        {paused && (
-          <Pressable style={styles.pauseOverlay} onPress={togglePause}>
-            <Text style={styles.pauseOverlayText}>Paused</Text>
-            <Text style={styles.pauseOverlaySubtext}>Tap to resume</Text>
-          </Pressable>
+            <NumberPad onNumberPress={handleNumberPress} onErase={handleErase} disabled={won || paused} />
+          </>
         )}
-      </View>
 
-      <NumberPad onNumberPress={handleNumberPress} onErase={handleErase} disabled={won || paused} />
-
-      <Modal visible={won} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>You won! 🎉</Text>
-            <Text style={styles.modalSubtitle}>
-              {difficulty[0].toUpperCase() + difficulty.slice(1)} · {formatTime(seconds)}
-            </Text>
-            <Pressable style={styles.modalButton} onPress={() => startNewGame(difficulty)}>
-              <Text style={styles.modalButtonText}>Play Again</Text>
-            </Pressable>
+        <Modal visible={won} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>You won! 🎉</Text>
+              <Text style={styles.modalSubtitle}>
+                {difficulty[0].toUpperCase() + difficulty.slice(1)} · {formatTime(seconds)}
+              </Text>
+              <Pressable style={styles.modalButton} onPress={() => selectDifficulty(difficulty)}>
+                <Text style={styles.modalButtonText}>Play Again</Text>
+              </Pressable>
+              <Pressable style={styles.modalLinkButton} onPress={goToMenu}>
+                <Text style={styles.modalLinkText}>Change Difficulty</Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      <StatusBar style="auto" />
+        <StatusBar style="auto" />
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -194,28 +187,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1a1a2e',
     marginBottom: 8,
-  },
-  difficultyRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  difficultyChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#e9ecef',
-  },
-  difficultyChipActive: {
-    backgroundColor: '#1a1a2e',
-  },
-  difficultyText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#495057',
-  },
-  difficultyTextActive: {
-    color: '#fff',
   },
   statusRow: {
     flexDirection: 'row',
@@ -249,6 +220,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1a1a2e',
   },
+  difficultyLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#868e96',
+    textTransform: 'uppercase',
+  },
   pauseOverlay: {
     position: 'absolute',
     top: 0,
@@ -271,13 +248,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#495057',
   },
-  newGameButton: {
+  menuButton: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#3b5bdb',
   },
-  newGameText: {
+  menuButtonText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 13,
@@ -316,5 +293,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 15,
+  },
+  modalLinkButton: {
+    marginTop: 14,
+    paddingVertical: 6,
+  },
+  modalLinkText: {
+    color: '#868e96',
+    fontWeight: '600',
+    fontSize: 13,
   },
 });
