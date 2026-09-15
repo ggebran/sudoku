@@ -46,6 +46,15 @@ See Expo's [EAS Build docs](https://docs.expo.dev/build/introduction/) for initi
 - TypeScript
 - `@react-native-async-storage/async-storage` for save-game persistence
 
+## Project structure
+
+- `App.tsx` — top-level screen state (menu vs. playing), timer, win detection, and save/restore wiring
+- `components/Board.tsx` — the 9x9 grid, including conflict and selection highlighting
+- `components/DifficultyMenu.tsx` — the difficulty picker and "Continue" card for resuming a saved game
+- `components/NumberPad.tsx` — the 1-9 input pad and erase button
+- `lib/sudoku.ts` — puzzle generation and solving: the MRV/bitmask backtracking solver, clue digging, conflict detection
+- `lib/storage.ts` — persisting and restoring the in-progress game via AsyncStorage
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
